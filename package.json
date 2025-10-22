@@ -1,0 +1,23 @@
+{
+  "name": "devtinder",
+  "version": "1.0.0",
+  "description": "tinder for developer ",
+  "main": "index.js",
+  "scripts": {
+     "start" : "node src/app.js",
+    "dev" : "nodemon src/app.js"
+    
+  },
+  "keywords": [
+    "node",
+    "js",
+    "javascript",
+    "react",
+    "js"
+  ],
+  "author": "Pintu Pandit",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
