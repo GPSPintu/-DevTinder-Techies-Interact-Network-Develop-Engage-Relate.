@@ -1,53 +1,38 @@
-// ==============================
-// 1️⃣ Import Required Modules
-// ==============================
 const express = require("express");
-const connectDB = require("./config/database"); 
-const app = express();// Import the database connection function
-const User = require("./models/user"); // Import the User model
-// 4️⃣ User Signup Route (POST /signup)
-// ==============================
+const connectDB = require("./config/database");
+const app = express();
+const User = require("./models/user");
+
 app.post("/signup", async (req, res) => {
-  
-    // Create a new user instance (for now hardcoded values, can be replaced with req.body)
-    const user = new User({
-      firstName: "Sachin",
-      lastName: "Tendulkar",
-      email: "sachin@gmail.com",
-      password: "sachin321@",
-      age: 50,  
-      gender: "Male"  
-    });
+  const user = new User({
+    firstName: "Rohit ",
+    lastName: "Virat",
+    email: "kholi@gmail.com",
+    password: "Kholi123456",
+    age: 37,
+  });
 
-    // Save the user to the database
-    try {
-      await user.save();
-          res.send(" User Added successful!");
-    } catch (error) {
-      console.error(" Error adding user:", error);  
-      res.status(500).send(" Internal Server Error");
-    }
-  
-
-    
-    // Send a success response
-    
-  
-  
+  try {
+    await user.save();
+    res.send("User signed up successfully!");
+  } catch (err) {
+    res.status(500).send("Error signing up user: " + err.message);
+  }
 });
 
-// ==============================
-// 5️⃣ Connect to Database and Start Server
-// ==============================
+
+
+
+// Connect to the database
 connectDB()
   .then(() => {
-    console.log("✅ Database connected successfully...");
-    
-    // Start the server on port 7777
+    console.log("Database connection established..");
     app.listen(7777, () => {
-      console.log("🚀 Server is running on port 7777...");
+      console.log("Server is successfully listening on port 7777..");
     });
   })
   .catch((err) => {
-    console.error("❌ Database connection error:", err);
+    console.error("Database cannot be connected!!", err);
   });
+
+  
