@@ -5,10 +5,51 @@ const User = require("./models/user");
 
 app.use(express.json());
 
-
 app.post("/signup", async (req, res) => {
+  // You can add signup logic here later
+});
 
-  const user = new User(req.body);
+// Get user by email
+app.get("/user", async (req, res) => {
+  const useremail = req.body.email;
+
+  try {
+    const user = await User.find({ email: useremail });
+    res.send(user);
+  } catch (err) {
+    res.status(400).send("Error fetching user: " + err.message);
+  }
+});
+
+module.exports = app;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// app.post("/signup", async (req, res) => {
+
+//   const user = new User(req.body);
  
 
 
@@ -24,13 +65,13 @@ app.post("/signup", async (req, res) => {
 //     age: 47,
 //   });
 
-  try {
-    await user.save();
-    res.send("User signed up successfully!");
-  } catch (err) {
-    res.status(500).send("Error signing up user: " + err.message);
-  }
-});
+//   try {
+//     await user.save();
+//     res.send("User signed up successfully!");
+//   } catch (err) {
+//     res.status(500).send("Error signing up user: " + err.message);
+//   }
+// });
 
 
 
