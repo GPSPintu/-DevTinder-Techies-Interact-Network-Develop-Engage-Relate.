@@ -1,54 +1,141 @@
-// Import mongoose (MongoDB object modeling tool)
-const mongoose = require('mongoose');
+// Import required packages
+const mongoose = require("mongoose"); // ODM for MongoDB
+const validator = require("validator"); // Used for validating email, URLs, passwords, etc.
+const jwt = require("jsonwebtoken"); // For creating authentication tokens
+const bcrypt = require("bcrypt"); // For hashing passwords
 
-// Define the structure (schema) for the "User" collection
-const userSchema = new mongoose.Schema({
-
-    // First name of the user
+// 1️⃣ Define the User Schema
+const userSchema = new mongoose.Schema(
+  {
+    // First Name: Required, must have at least 4 characters and at most 50
     firstName: {
-        type: String,   // Data type is String
-        required: true  // This field is mandatory (optional but good practice)
+      type: String,
+      required: true,
+      minLength: 4,
+      maxLength: 50,
     },
 
-    // Last name of the user
+    // Last Name: Optional
     lastName: {
-        type: String,   // Data type is String
-        required: true
+      type: String,
     },
 
-    // User's email address
-    email: {
-        type: String,   // Data type is String
-        unique: true,   // Ensures that no two users have the same email
-        required: true, // Must be provided
-        trim: true,     // Removes spaces before/after the email
-        lowercase: true // Automatically converts email to lowercase
+    // Email: Required, unique, lowercase, trimmed, and validated with 'validator'
+    emailId: {
+      type: String,
+      lowercase: true,
+      required: true,
+      unique: true,
+      trim: true,
+      validate(value) {
+        if (!validator.isEmail(value)) {
+          throw new Error("Invalid email address: " + value);
+        }
+      },
     },
 
-    // Hashed user password (never store plain text passwords!)
+    // Password: Required and must be strong according to validator's rules
     password: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
+      validate(value) {
+        if (!validator.isStrongPassword(value)) {
+          throw new Error("Enter a Strong Password: " + value);
+        }
+      },
     },
 
-    // Age of the user
+    // Age: Optional, must be at least 18 if provided
     age: {
-        type: Number,
-        min: 0,         // Minimum allowed value
-        max: 120        // Maximum allowed value
+      type: Number,
+      min: 18,
     },
 
-    // Gender of the user
+    // Gender: Must be one of the specified values
     gender: {
-        type: String,
-        enum: ['Male', 'Female', 'Other'], // Restrict allowed values
-        default: 'Other'                    // Default value if not provided
-    }
+      type: String,
+      enum: {
+        values: ["male", "female", "other"],
+        message: `{VALUE} is not a valid gender type`,
+      },
+    },
 
-}, { 
-    timestamps: true  // Automatically adds createdAt and updatedAt fields
+    // Whether user is a premium member
+    isPremium: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Membership type (optional)
+    membershipType: {
+      type: String,
+    },
+
+    // Profile Photo URL with a default value and validation
+    photoUrl: {
+      type: String,
+      default: "https://geographyandyou.com/images/user-profile.png",
+      validate(value) {
+        if (!validator.isURL(value)) {
+          throw new Error("Invalid Photo URL: " + value);
+        }
+      },
+    },
+
+    // About section with a default message
+    about: {
+      type: String,
+      default: "This is a default about of the user!",
+    },
+
+    // List of user skills (array of strings)
+    skills: {
+      type: [String],
+    },
+  },
+  {
+    // Automatically adds createdAt and updatedAt timestamps
+    timestamps: true,
+  }
+);
+
+// 2️⃣ Pre-save Hook: Automatically hash password before saving user
+userSchema.pre("save", async function (next) {
+  const user = this;
+
+  // Only hash password if it’s modified (important for updates)
+  if (user.isModified("password")) {
+    const saltRounds = 10; // You can adjust the salt rounds for stronger hashing
+    user.password = await bcrypt.hash(user.password, saltRounds);
+  }
+
+  next(); // Move to the next middleware
 });
 
-// Export the model so it can be used in other parts of the app
-// The first argument ('User') is the collection name (it will become 'users' in MongoDB)
-module.exports = mongoose.model('User', userSchema);
+// 3️⃣ Method to generate a JWT token for authentication
+userSchema.methods.getJWT = async function () {
+  const user = this;
+
+  // Create a JWT token with user's ID and an expiration time of 7 days
+  const token = await jwt.sign({ _id: user._id }, "DEV@Tinder$790", {
+    expiresIn: "7d",
+  });
+
+  return token;
+};
+
+// 4️⃣ Method to validate a user's password
+userSchema.methods.validatePassword = async function (passwordInputByUser) {
+  const user = this;
+
+  // Compare the input password with the hashed password stored in the DB
+  const isPasswordValid = await bcrypt.compare(
+    passwordInputByUser,
+    user.password
+  );
+
+  return isPasswordValid;
+};
+
+// 5️⃣ Export the model to use it in other files
+module.exports = mongoose.model("User", userSchema);
