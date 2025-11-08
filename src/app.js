@@ -1,219 +1,367 @@
-// server.js
 
-// ===============================
-// 1️⃣ IMPORT REQUIRED MODULES
-// ===============================
-const express = require("express"); // Import Express framework
-const connectDB = require("./config/database"); // Import MongoDB connection function
-const User = require("./models/user"); // Import Mongoose User model
-const { validateSignUpData } = require("./utils/validation"); // Import signup validation
-const bcrypt = require("bcrypt"); // Library for password hashing
+// ============================================================
+//              IMPORTING REQUIRED MODULES
+// ============================================================
 
-// Create an Express application instance
+// Express framework to build the server
+const express = require("express");
+
+// Function to connect to MongoDB
+const connectDB = require("./config/database");
+
+// Initialize the Express app
 const app = express();
 
+// Middleware for parsing cookies
+const cookieParser = require("cookie-parser");
 
-// ===============================
-// 2️⃣ MIDDLEWARE
-// ===============================
-// Parse JSON bodies for POST, PATCH requests
+// Middleware for enabling CORS (Cross-Origin Resource Sharing)
+const cors = require("cors");
+
+// Node's built-in HTTP module (needed for WebSocket setup)
+const http = require("http");
+
+// Load environment variables from .env file (like PORT, DB URI, etc.)
+require("dotenv").config();
+
+// Import and start scheduled cron jobs (for background tasks)
+require("./utils/cronjob");
+
+// ============================================================
+//              GLOBAL MIDDLEWARES
+// ============================================================
+
+// Step 1: Enable CORS for frontend (e.g., React app running on localhost:5173)
+app.use(
+  cors({
+    origin: "http://localhost:5173", // The frontend URL
+    credentials: true, // Allow cookies and authentication headers
+  })
+);
+
+// Step 2: Parse incoming JSON request bodies
 app.use(express.json());
 
+// Step 3: Parse cookies from incoming requests
+app.use(cookieParser());
 
-// ===============================
-// 3️⃣ CREATE - Signup a new user
-// POST /signup
-// ===============================
-app.post("/signup", async (req, res) => {
-  try {
-    // ✅ Step 1: Validate request data
-    validateSignUpData(req);
+// ============================================================
+//              IMPORTING ROUTERS
+// ============================================================
 
-    // ✅ Step 2: Extract fields from request body
-    const { firstName, lastName, email, password } = req.body;
+const authRouter = require("./routes/auth"); // Authentication routes (signup/login/logout)
+const profileRouter = require("./routes/profile"); // Profile view/edit routes
+const requestRouter = require("./routes/request"); // Friend/connection request routes
+const userRouter = require("./routes/user"); // User-related routes (e.g., search, list)
+const paymentRouter = require("./routes/payment"); // Payment-related routes
+const initializeSocket = require("./utils/socket"); // Socket.io setup for real-time communication
+const chatRouter = require("./routes/chat"); // Chat/message-related routes
 
-    // ✅ Step 3: Check if email already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).send({ error: "⚠️ Email already registered" });
-    }
+// ============================================================
+//              MOUNTING ROUTERS
+// ============================================================
 
-    // ✅ Step 4: Hash the password securely
-    const passwordHash = await bcrypt.hash(password, 10);
+// Each router handles its own endpoints internally
+app.use("/", authRouter);
+app.use("/", profileRouter);
+app.use("/", requestRouter);
+app.use("/", userRouter);
+app.use("/", paymentRouter);
+app.use("/", chatRouter);
 
-    // ✅ Step 5: Create a new User instance
-    const user = new User({
-      firstName,
-      lastName,
-      email,
-      password: passwordHash,
-    });
+// ============================================================
+//              SETUP HTTP SERVER & SOCKET
+// ============================================================
 
-    // ✅ Step 6: Save the user to MongoDB
-    await user.save();
+// Step 1: Create an HTTP server using Express app
+const server = http.createServer(app);
 
-    // ✅ Step 7: Return success response (excluding password)
-    const userResponse = user.toObject();
-    delete userResponse.password;
+// Step 2: Initialize socket.io on top of this HTTP server (for chat, notifications, etc.)
+initializeSocket(server);
 
-    res.status(201).send({
-      message: "✅ User signed up successfully!",
-      user: userResponse,
-    });
-  } catch (err) {
-    res.status(500).send({ error: "❌ Error signing up user: " + err.message });
-  }
-});
+// ============================================================
+//              DATABASE CONNECTION & SERVER START
+// ============================================================
 
-
-// ===============================
-// 4️⃣ LOGIN - Authenticate user
-// POST /login
-// ===============================
-app.post("/login", async (req, res) => {
-  try {
-    // ✅ Step 1: Extract login credentials
-    const { email, password } = req.body;
-
-    // ✅ Step 2: Check if both fields are provided
-    if (!email || !password) {
-      return res.status(400).send({ error: "⚠️ Email and password are required" });
-    }
-
-    // ✅ Step 3: Find user by email
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).send({ error: "❌ Invalid credentials (user not found)" });
-    }
-
-    // ✅ Step 4: Compare provided password with stored hash
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).send({ error: "❌ Invalid credentials (wrong password)" });
-    }
-
-    // ✅ Step 5: Login successful — return basic user info
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    res.status(200).send({
-      message: "✅ Login successful!",
-      user: userResponse,
-    });
-  } catch (err) {
-    res.status(500).send({ error: "❌ Error logging in: " + err.message });
-  }
-});
-
-
-// ===============================
-// 5️⃣ READ - Get all users
-// GET /feed
-// ===============================
-app.get("/feed", async (req, res) => {
-  try {
-    // Fetch all users (excluding password field)
-    const users = await User.find({}, { password: 0 });
-    res.send(users);
-  } catch (err) {
-    res.status(400).send({ error: "❌ Something went wrong: " + err.message });
-  }
-});
-
-
-// ===============================
-// 6️⃣ READ - Get single user by email
-// GET /user?email=<email>
-// ===============================
-app.get("/user", async (req, res) => {
-  const userEmail = req.query.email; // Get email from query string
-
-  if (!userEmail) {
-    return res.status(400).send({ error: "⚠️ Email is required" });
-  }
-
-  try {
-    // Find user by email (excluding password)
-    const user = await User.findOne({ email: userEmail }, { password: 0 });
-
-    if (!user) {
-      return res.status(404).send({ message: "❌ User not found" });
-    }
-
-    res.send(user);
-  } catch (err) {
-    res.status(500).send({ error: "❌ Error fetching user: " + err.message });
-  }
-});
-
-
-// ===============================
-// 7️⃣ UPDATE - Update user by ID
-// PATCH /user
-// ===============================
-app.patch("/user", async (req, res) => {
-  const { userId, ...updateData } = req.body;
-
-  console.log("🔄 Update request for userId:", userId, "with data:", updateData);
-
-  try {
-    if (!userId) {
-      return res.status(400).send("⚠️ userId is required");
-    }
-
-    const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
-      new: true,
-      runValidators: true,
-      projection: { password: 0 },
-    });
-
-    if (!updatedUser) {
-      return res.status(404).send("❌ User not found");
-    }
-
-    res.json(updatedUser);
-  } catch (err) {
-    console.error("❌ Update error:", err);
-    res.status(500).send("Something went wrong: " + err.message);
-  }
-});
-
-
-// ===============================
-// 8️⃣ DELETE - Delete user by ID
-// DELETE /user/:id
-// ===============================
-app.delete("/user/:id", async (req, res) => {
-  const userId = req.params.id;
-
-  try {
-    const deletedUser = await User.findByIdAndDelete(userId);
-
-    if (!deletedUser) {
-      return res.status(404).send({ message: "❌ User not found" });
-    }
-
-    res.send({ message: "✅ User deleted successfully" });
-  } catch (err) {
-    res.status(400).send({ error: "❌ Error deleting user: " + err.message });
-  }
-});
-
-
-// ===============================
-// 9️⃣ CONNECT DATABASE & START SERVER
-// ===============================
+// Step 1: Connect to MongoDB database
 connectDB()
   .then(() => {
-    console.log("✅ Database connection established.");
-    app.listen(7777, () => {
-      console.log("🚀 Server is running on http://localhost:7777");
+    console.log("✅ Database connection established...");
+
+    // Step 2: Start the server after successful DB connection
+    server.listen(process.env.PORT, () => {
+      console.log("🚀 Server is successfully listening on port 7777...");
     });
   })
   .catch((err) => {
-    console.error("❌ Database connection failed:", err);
+    // Step 3: Handle database connection errors
+    console.error("❌ Database cannot be connected!!", err.message);
   });
 
 
-// Export app for testing or reusability
-module.exports = app;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // server.js
+
+// // ===============================
+// // 1️⃣ IMPORT REQUIRED MODULES
+// // ===============================
+// const express = require("express"); // Import Express framework
+// const connectDB = require("./config/database"); // Import MongoDB connection function
+// const User = require("./models/user"); // Import Mongoose User model
+// const { validateSignUpData } = require("./utils/validation"); // Import signup validation
+// const bcrypt = require("bcrypt"); // Library for password hashing
+
+// // Create an Express application instance
+// const app = express();
+
+
+// // ===============================
+// // 2️⃣ MIDDLEWARE
+// // ===============================
+// // Parse JSON bodies for POST, PATCH requests
+// app.use(express.json());
+
+
+// // ===============================
+// // 3️⃣ CREATE - Signup a new user
+// // POST /signup
+// // ===============================
+// app.post("/signup", async (req, res) => {
+//   try {
+//     // ✅ Step 1: Validate request data
+//     validateSignUpData(req);
+
+//     // ✅ Step 2: Extract fields from request body
+//     const { firstName, lastName, email, password } = req.body;
+
+//     // ✅ Step 3: Check if email already exists
+//     const existingUser = await User.findOne({ email });
+//     if (existingUser) {
+//       return res.status(400).send({ error: "⚠️ Email already registered" });
+//     }
+
+//     // ✅ Step 4: Hash the password securely
+//     const passwordHash = await bcrypt.hash(password, 10);
+
+//     // ✅ Step 5: Create a new User instance
+//     const user = new User({
+//       firstName,
+//       lastName,
+//       email,
+//       password: passwordHash,
+//     });
+
+//     // ✅ Step 6: Save the user to MongoDB
+//     await user.save();
+
+//     // ✅ Step 7: Return success response (excluding password)
+//     const userResponse = user.toObject();
+//     delete userResponse.password;
+
+//     res.status(201).send({
+//       message: "✅ User signed up successfully!",
+//       user: userResponse,
+//     });
+//   } catch (err) {
+//     res.status(500).send({ error: "❌ Error signing up user: " + err.message });
+//   }
+// });
+
+
+// // ===============================
+// // 4️⃣ LOGIN - Authenticate user
+// // POST /login
+// // ===============================
+// app.post("/login", async (req, res) => {
+//   try {
+//     // ✅ Step 1: Extract login credentials
+//     const { email, password } = req.body;
+
+//     // ✅ Step 2: Check if both fields are provided
+//     if (!email || !password) {
+//       return res.status(400).send({ error: "⚠️ Email and password are required" });
+//     }
+
+//     // ✅ Step 3: Find user by email
+//     const user = await User.findOne({ email });
+//     if (!user) {
+//       return res.status(401).send({ error: "❌ Invalid credentials (user not found)" });
+//     }
+
+//     // ✅ Step 4: Compare provided password with stored hash
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(401).send({ error: "❌ Invalid credentials (wrong password)" });
+//     }
+
+//     // ✅ Step 5: Login successful — return basic user info
+//     const userResponse = user.toObject();
+//     delete userResponse.password;
+
+//     res.status(200).send({
+//       message: "✅ Login successful!",
+//       user: userResponse,
+//     });
+//   } catch (err) {
+//     res.status(500).send({ error: "❌ Error logging in: " + err.message });
+//   }
+// });
+
+
+// // ===============================
+// // 5️⃣ READ - Get all users
+// // GET /feed
+// // ===============================
+// app.get("/feed", async (req, res) => {
+//   try {
+//     // Fetch all users (excluding password field)
+//     const users = await User.find({}, { password: 0 });
+//     res.send(users);
+//   } catch (err) {
+//     res.status(400).send({ error: "❌ Something went wrong: " + err.message });
+//   }
+// });
+
+
+// // ===============================
+// // 6️⃣ READ - Get single user by email
+// // GET /user?email=<email>
+// // ===============================
+// app.get("/user", async (req, res) => {
+//   const userEmail = req.query.email; // Get email from query string
+
+//   if (!userEmail) {
+//     return res.status(400).send({ error: "⚠️ Email is required" });
+//   }
+
+//   try {
+//     // Find user by email (excluding password)
+//     const user = await User.findOne({ email: userEmail }, { password: 0 });
+
+//     if (!user) {
+//       return res.status(404).send({ message: "❌ User not found" });
+//     }
+
+//     res.send(user);
+//   } catch (err) {
+//     res.status(500).send({ error: "❌ Error fetching user: " + err.message });
+//   }
+// });
+
+
+// // ===============================
+// // 7️⃣ UPDATE - Update user by ID
+// // PATCH /user
+// // ===============================
+// app.patch("/user", async (req, res) => {
+//   const { userId, ...updateData } = req.body;
+
+//   console.log("🔄 Update request for userId:", userId, "with data:", updateData);
+
+//   try {
+//     if (!userId) {
+//       return res.status(400).send("⚠️ userId is required");
+//     }
+
+//     const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
+//       new: true,
+//       runValidators: true,
+//       projection: { password: 0 },
+//     });
+
+//     if (!updatedUser) {
+//       return res.status(404).send("❌ User not found");
+//     }
+
+//     res.json(updatedUser);
+//   } catch (err) {
+//     console.error("❌ Update error:", err);
+//     res.status(500).send("Something went wrong: " + err.message);
+//   }
+// });
+
+
+// // ===============================
+// // 8️⃣ DELETE - Delete user by ID
+// // DELETE /user/:id
+// // ===============================
+// app.delete("/user/:id", async (req, res) => {
+//   const userId = req.params.id;
+
+//   try {
+//     const deletedUser = await User.findByIdAndDelete(userId);
+
+//     if (!deletedUser) {
+//       return res.status(404).send({ message: "❌ User not found" });
+//     }
+
+//     res.send({ message: "✅ User deleted successfully" });
+//   } catch (err) {
+//     res.status(400).send({ error: "❌ Error deleting user: " + err.message });
+//   }
+// });
+
+
+// // ===============================
+// // 9️⃣ CONNECT DATABASE & START SERVER
+// // ===============================
+// connectDB()
+//   .then(() => {
+//     console.log("✅ Database connection established.");
+//     app.listen(7777, () => {
+//       console.log("🚀 Server is running on http://localhost:7777");
+//     });
+//   })
+//   .catch((err) => {
+//     console.error("❌ Database connection failed:", err);
+//   });
+
+
+// // Export app for testing or reusability
+// module.exports = app;
