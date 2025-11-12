@@ -1,32 +1,51 @@
-// Import the 'validator' library to validate email and password formats
-const validator = require('validator');
+// Import the 'validator' library for validating strings like emails and passwords
+const validator = require("validator");
 
-// Function to validate sign-up data from the request body
+// Function to validate user data during sign-up
 const validateSignUpData = (req) => {
-    // Destructure required fields from the request body
-    // NOTE: Corrected 'emmial' to 'email'
-    const { firstName, lastName, email, password } = req.body;
+  // Destructure the required fields from the request body
+  const { firstName, lastName, emailId, password } = req.body;
 
-    // 1️⃣ Check if first name and last name are provided
-    if (!firstName || !lastName) {
-        throw new Error("Name is not valid");
-    }
-
-    // 2️⃣ Check if the email is valid using validator's isEmail() function
-    else if (!validator.isEmail(email)) {
-        throw new Error("Email is not valid");
-    }
-
-    // 3️⃣ Check if the password is strong using validator's isStrongPassword()
-    else if (!validator.isStrongPassword(password)) {
-        throw new Error("Please enter a strong password");
-    }
-
-    // 4️⃣ If all checks pass, return true (optional)
-    return true;
+  // Check if the user's first and last name are provided
+  if (!firstName || !lastName) {
+    throw new Error("Name is not valid!"); // Throw an error if name fields are missing
+  } 
+  // Check if the provided email is valid
+  else if (!validator.isEmail(emailId)) {
+    throw new Error("Email is not valid!"); // Throw an error if email is invalid
+  } 
+  // Check if the password is strong enough (contains uppercase, lowercase, number, symbol)
+  else if (!validator.isStrongPassword(password)) {
+    throw new Error("Please enter a strong Password!"); // Throw an error if password is weak
+  }
 };
 
-// Export the function so it can be used in other files
+// Function to validate which fields can be edited in a user profile
+const validateEditProfileData = (req) => {
+  // Define the list of allowed fields that can be updated
+  const allowedEditFields = [
+    "firstName",
+    "lastName",
+    "emailId",
+    "photoUrl",
+    "gender",
+    "age",
+    "about",
+    "skills",
+  ];
+
+  // Check that every field in the request body is part of the allowed fields
+  const isEditAllowed = Object.keys(req.body).every((field) =>
+    allowedEditFields.includes(field)
+  );
+
+  // Return true if all fields are allowed; false otherwise
+  return isEditAllowed;
+};
+
+// Export both validation functions for use in other files
 module.exports = {
-    validateSignUpData,
+  validateSignUpData,
+  validateEditProfileData,
 };
+
