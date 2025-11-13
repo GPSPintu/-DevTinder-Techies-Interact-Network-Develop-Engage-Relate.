@@ -1,67 +1,60 @@
+// server.js
+// ==========================================
+// 🚀 MAIN SERVER FILE
+// ==========================================
 
-// ============================================================
-//              IMPORTING REQUIRED MODULES
-// ============================================================
+// Import core and third-party dependencies
+const express = require("express");           // Express framework for building the API
+const connectDB = require("./config/database"); // MongoDB connection setup
+const cookieParser = require("cookie-parser"); // Middleware to parse cookies
+require('./utils/cronjob');
+               // Middleware to handle Cross-Origin Resource Sharing
+const http = require("http");                 // Node's HTTP module (needed for socket.io)
+require("dotenv").config();                   // Load environment variables from .env file
 
-// Express framework to build the server
-const express = require("express");
+// Import and initialize background jobs
+require("./utils/cronjob"); // Executes scheduled tasks (like cleanup, notifications, etc.)
 
-// Function to connect to MongoDB
-const connectDB = require("./config/database");
-
-// Initialize the Express app
+// Create Express app
 const app = express();
 
-// Middleware for parsing cookies
-const cookieParser = require("cookie-parser");
+// ==========================================
+// 🛡️ MIDDLEWARE CONFIGURATION
+// ==========================================
 
-// Middleware for enabling CORS (Cross-Origin Resource Sharing)
-const cors = require("cors");
-
-// Node's built-in HTTP module (needed for WebSocket setup)
-const http = require("http");
-
-// Load environment variables from .env file (like PORT, DB URI, etc.)
-require("dotenv").config();
-
-// Import and start scheduled cron jobs (for background tasks)
-require("./utils/cronjob");
-
-// ============================================================
-//              GLOBAL MIDDLEWARES
-// ============================================================
-
-// Step 1: Enable CORS for frontend (e.g., React app running on localhost:5173)
+// Enable CORS to allow requests from the frontend (React app on localhost:5173)
 app.use(
   cors({
-    origin: "http://localhost:5173", // The frontend URL
-    credentials: true, // Allow cookies and authentication headers
+    origin: "http://localhost:5173", // Frontend URL
+    credentials: true,               // Allow cookies and authentication headers
   })
 );
 
-// Step 2: Parse incoming JSON request bodies
+// Middleware to parse incoming JSON requests
 app.use(express.json());
 
-// Step 3: Parse cookies from incoming requests
+// Middleware to parse cookies in incoming requests
 app.use(cookieParser());
 
-// ============================================================
-//              IMPORTING ROUTERS
-// ============================================================
+// ==========================================
+// 🧭 ROUTES IMPORT
+// ==========================================
 
-const authRouter = require("./routes/auth"); // Authentication routes (signup/login/logout)
-const profileRouter = require("./routes/profile"); // Profile view/edit routes
-const requestRouter = require("./routes/request"); // Friend/connection request routes
-const userRouter = require("./routes/user"); // User-related routes (e.g., search, list)
-const paymentRouter = require("./routes/payment"); // Payment-related routes
-const initializeSocket = require("./utils/socket"); // Socket.io setup for real-time communication
-const chatRouter = require("./routes/chat"); // Chat/message-related routes
+// Import all route modules
+const authRouter = require("./routes/auth");
+const profileRouter = require("./routes/profile");
+const requestRouter = require("./routes/request");
+const userRouter = require("./routes/user");
+const paymentRouter = require("./routes/payment");
+const chatRouter = require("./routes/chat");
 
-// ============================================================
-//              MOUNTING ROUTERS
-// ============================================================
+// Socket initialization utility
+const initializeSocket = require("./utils/socket");
 
-// Each router handles its own endpoints internally
+// ==========================================
+// 🚏 REGISTER ROUTES
+// ==========================================
+// All routes are mounted at the root level (“/”)
 app.use("/", authRouter);
 app.use("/", profileRouter);
 app.use("/", requestRouter);
@@ -69,33 +62,31 @@ app.use("/", userRouter);
 app.use("/", paymentRouter);
 app.use("/", chatRouter);
 
-// ============================================================
-//              SETUP HTTP SERVER & SOCKET
-// ============================================================
+// ==========================================
+// 🔌 SERVER + SOCKET.IO INITIALIZATION
+// ==========================================
 
-// Step 1: Create an HTTP server using Express app
+// Create an HTTP server (required for integrating Socket.io)
 const server = http.createServer(app);
 
-// Step 2: Initialize socket.io on top of this HTTP server (for chat, notifications, etc.)
+// Initialize WebSocket connections
 initializeSocket(server);
 
-// ============================================================
-//              DATABASE CONNECTION & SERVER START
-// ============================================================
+// ==========================================
+// 🗄️ DATABASE CONNECTION & SERVER STARTUP
+// ==========================================
 
-// Step 1: Connect to MongoDB database
 connectDB()
   .then(() => {
     console.log("✅ Database connection established...");
 
-    // Step 2: Start the server after successful DB connection
+    // Start the server only after the database is connected
     server.listen(process.env.PORT, () => {
-      console.log("🚀 Server is successfully listening on port 7777...");
+      console.log(`🚀 Server is successfully listening on port ${process.env.PORT}...`);
     });
   })
   .catch((err) => {
-    // Step 3: Handle database connection errors
-    console.error("❌ Database cannot be connected!!", err.message);
+    console.error("❌ Database connection failed!", err);
   });
 
 
