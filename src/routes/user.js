@@ -1,14 +1,15 @@
 // Importing required modules
-const express = require("express");
-const userRouter = express.Router();
+const express = require("express");                       // Express framework
+const userRouter = express.Router();                      // Create user-specific router
 
 // Importing authentication middleware and Mongoose models
-const { userAuth } = require("../middlewares/auth");
-const ConnectionRequest = require("../models/connectionRequest");
-const User = require("../models/user");
+const { userAuth } = require("../middlewares/auth");      // Auth middleware (verifies JWT)
+const ConnectionRequest = require("../models/connectionRequest");  // Model for connection requests
+const User = require("../models/user");                   // User model
 
 // Defining which user fields are safe to expose in API responses
 const USER_SAFE_DATA = "firstName lastName photoUrl age gender about skills";
+
 
 /**
  * ---------------------------------------
@@ -17,25 +18,26 @@ const USER_SAFE_DATA = "firstName lastName photoUrl age gender about skills";
  */
 userRouter.get("/user/requests/received", userAuth, async (req, res) => {
   try {
-    const loggedInUser = req.user; // Get the logged-in user's info (from middleware)
+    const loggedInUser = req.user;                        // User data extracted from JWT by middleware
 
-    // Find all connection requests where the logged-in user is the receiver
-    // and the sender has shown interest (status = 'interested')
+    // Find all connection requests WITH:
+    // - toUserId = logged-in user (means they received the request)
+    // - status = "interested" (someone expressed interest)
     const connectionRequests = await ConnectionRequest.find({
       toUserId: loggedInUser._id,
       status: "interested",
-    }).populate("fromUserId", USER_SAFE_DATA); // Populate sender info safely
+    }).populate("fromUserId", USER_SAFE_DATA);            // Populate sender user info (safe fields only)
 
-    // Send successful response with the data
+    // Send successful response with pending requests
     res.json({
       message: "Data fetched successfully",
       data: connectionRequests,
     });
   } catch (err) {
-    // Handle errors
-    res.status(400).send("ERROR: " + err.message);
+    res.status(400).send("ERROR: " + err.message);        // Error handling
   }
 });
+
 
 /**
  * ---------------------------------------
@@ -46,33 +48,31 @@ userRouter.get("/user/connections", userAuth, async (req, res) => {
   try {
     const loggedInUser = req.user;
 
-    // Find all connection requests where the logged-in user is either the sender or receiver
-    // and the request has been accepted
+    // Find all accepted requests WHERE:
+    // - Logged-in user is the sender OR receiver
     const connectionRequests = await ConnectionRequest.find({
       $or: [
         { toUserId: loggedInUser._id, status: "accepted" },
         { fromUserId: loggedInUser._id, status: "accepted" },
       ],
     })
-      .populate("fromUserId", USER_SAFE_DATA)
-      .populate("toUserId", USER_SAFE_DATA);
+      .populate("fromUserId", USER_SAFE_DATA)             // Populate sender data
+      .populate("toUserId", USER_SAFE_DATA);              // Populate receiver data
 
-    // Map over the connection requests and return the other user in each connection
+    // For each connection request, return the OTHER user (not the logged-in one)
     const data = connectionRequests.map((row) => {
       if (row.fromUserId._id.toString() === loggedInUser._id.toString()) {
-        // If the logged-in user sent the request, return the receiver
-        return row.toUserId;
+        return row.toUserId;                              // If you sent request → return the receiver
       }
-      // Otherwise, return the sender
-      return row.fromUserId;
+      return row.fromUserId;                              // If you received request → return the sender
     });
 
-    // Send response with all connected users
-    res.json({ data });
+    res.json({ data });                                   // Send final list of connections
   } catch (err) {
     res.status(400).send({ message: err.message });
   }
 });
+
 
 /**
  * ---------------------------------------
@@ -83,43 +83,22 @@ userRouter.get("/feed", userAuth, async (req, res) => {
   try {
     const loggedInUser = req.user;
 
-    // Pagination setup (default: page=1, limit=10)
+    // Setup pagination (defaults if missing)
     const page = parseInt(req.query.page) || 1;
     let limit = parseInt(req.query.limit) || 10;
-    limit = limit > 50 ? 50 : limit; // Cap limit to 50 to avoid heavy load
+
+    // Prevent heavy API load by limiting max number of users per request
+    limit = limit > 50 ? 50 : limit;
+
     const skip = (page - 1) * limit;
 
-    // Find all connection requests involving the logged-in user
+    // Fetch all connection records involving logged-in user
+    // This helps exclude them from the feed (already interacted)
     const connectionRequests = await ConnectionRequest.find({
       $or: [{ fromUserId: loggedInUser._id }, { toUserId: loggedInUser._id }],
-    }).select("fromUserId toUserId");
+    }).select("fromUserId toUserId");                     // Select only IDs, not whole objects
 
-    // Build a list of users to hide from the feed (already connected/interacted)
+    // Build a set of user IDs to hide from the feed
     const hideUsersFromFeed = new Set();
     connectionRequests.forEach((req) => {
-      hideUsersFromFeed.add(req.fromUserId.toString());
-      hideUsersFromFeed.add(req.toUserId.toString());
-    });
-
-    // Fetch users excluding:
-    // 1. Logged-in user themselves
-    // 2. Users already in any connection request with them
-    const users = await User.find({
-      $and: [
-        { _id: { $nin: Array.from(hideUsersFromFeed) } },
-        { _id: { $ne: loggedInUser._id } },
-      ],
-    })
-      .select(USER_SAFE_DATA) // Only return safe fields
-      .skip(skip) // Skip for pagination
-      .limit(limit); // Limit the number of users returned
-
-    // Send feed data
-    res.json({ data: users });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-});
-
-// Exporting the router to be used in main app
-module.exports = userRouter;
+      hideUsersFromFeed.add(req
