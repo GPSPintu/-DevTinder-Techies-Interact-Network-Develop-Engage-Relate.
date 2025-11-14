@@ -1,59 +1,37 @@
-// Import Mongoose for schema and model creation
-const mongoose = require("mongoose");
+// Import Express framework
+const express = require("express");                  // Loads the Express library used to create the server
 
-// Define the Connection Request schema
-const connectionRequestSchema = new mongoose.Schema(
-  {
-    // The user who sent the connection request
-    fromUserId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Reference to the User model
-      required: true,
-    },
+// Import database connection function
+const connectDB = require("./config/database");      // Custom function that connects your app to MongoDB
 
-    // The user who received the connection request
-    toUserId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Reference to the User model
-      required: true,
-    },
+// Load environment variables from .env file
+require("dotenv").config();                          // Loads variables like PORT, MONGO_URL into process.env
 
-    // The current status of the connection request
-    status: {
-      type: String,
-      required: true,
-      enum: {
-        values: ["ignored", "interested", "accepted", "rejected"],
-        message: "{VALUE} is an incorrect status type", // Custom error message for invalid status
-      },
-      default: "interested", // Optional: set a default value
-    },
-  },
-  {
-    timestamps: true, // Automatically adds createdAt and updatedAt fields
-  }
-);
+// Create an Express application instance
+const app = express();                               // Creates the main Express app
 
-// ✅ Compound index to ensure a user cannot send multiple requests to the same user
-// This improves query performance and prevents duplicate connections.
-connectionRequestSchema.index({ fromUserId: 1, toUserId: 1 }, { unique: true });
 
-// ✅ Pre-save hook to prevent a user from sending a connection request to themselves
-connectionRequestSchema.pre("save", function (next) {
-  const connectionRequest = this;
+// ---------------------- MIDDLEWARE ----------------------
+app.use(express.json());                             // Middleware to parse JSON in request bodies
 
-  // Check if sender and receiver are the same
-  if (connectionRequest.fromUserId.equals(connectionRequest.toUserId)) {
-    throw new Error("❌ Cannot send a connection request to yourself!");
-  }
 
-  next(); // Continue with save if validation passes
+// ---------------------- SIMPLE ROUTE ----------------------
+app.get("/", (req, res) => {                         // Defines a GET route at "/"
+  res.send("Server is running!");                    // Sends back a simple confirmation message
 });
 
-// ✅ Create and export the model
-const ConnectionRequestModel = mongoose.model(
-  "ConnectionRequest",
-  connectionRequestSchema
-);
 
-module.exports = ConnectionRequestModel;
+// ---------------------- DATABASE & SERVER ----------------------
+connectDB()                                           // Calls the function to connect to MongoDB
+  .then(() => {                                       // If connection is successful:
+    console.log("Database connection established...");
+
+    const PORT = process.env.PORT || 7777;           // Load port from .env OR default to 7777
+
+    app.listen(PORT, () => {                         // Start the express server on selected port
+      console.log(`Server is successfully listening on port ${PORT}...`);
+    });
+  })
+  .catch((err) => {                                   // If DB connection fails:
+    console.error("Database cannot be connected!!", err);   // Log the error
+  });
