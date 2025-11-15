@@ -412,7 +412,5 @@ userSchema.pre("save", function(next) {
 | `req.query`     | ?key=value                          |
 | `res.send()`    | Send response to user               |
 
----
 
-Would you like me to generate a **ready-to-run folder structure + example code files (server.js, routes, models, etc.)** for this project next?
-That way you can just copy-paste and start building.
+
